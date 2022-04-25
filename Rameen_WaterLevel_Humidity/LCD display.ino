@@ -1,6 +1,4 @@
-// include the library code:
 #include <LiquidCrystal.h>
-//initialise the library with the numbers of the interface pins
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
 int resval = 0;  // holds the value
@@ -15,7 +13,6 @@ void setup() {
 }
 
 void loop() {
-  // Print a message to the LCD.
   lcd.print("WATER LEVEL: ");
   // set the cursor to column 0, line 1
   lcd.setCursor(0, 1);
