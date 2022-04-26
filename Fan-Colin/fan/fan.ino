@@ -5,10 +5,15 @@
 #include <Wire.h>
 #include "DS1307.h"
 
-//define PORT E registers
-volatile unsigned char* DDR_E = (unsigned char*) 0x2D;
-volatile unsigned char* PORT_E = (unsigned char*) 0x2E;
-volatile unsigned char* PIN_E = (unsigned char*) 0x2C;
+//define PORT registers
+volatile unsigned char* DDR_A = (unsigned char*) 0x21;
+volatile unsigned char* PORT_A = (unsigned char*) 0x22;
+volatile unsigned char* PIN_A = (unsigned char*) 0x20;
+
+volatile unsigned char* DDR_L = (unsigned char*) 0x10A;
+volatile unsigned char* PORT_L = (unsigned char*) 0x10B;
+volatile unsigned char* PIN_L = (unsigned char*) 0x109;
+
 
 //define variables
 DS1307 clock;
@@ -16,8 +21,11 @@ int input;
 
 void setup()
 {
-  //set pin 3 and 5 as OUTPUT
-  *DDR_E |= B00111000;
+  //set pin PL0, PL1, and PL2 as OUTPUT for DC Motor
+  *DDR_L |= B00000111;
+
+  //set pin PA0, PA1, PA2, and PA2 as OUTPUT for LEDs
+  *DDR_A |= B00001111;
 
   setClockTime();
 
@@ -35,11 +43,13 @@ void loop()
     {
       setFan(1);
       printTime();
+      setLED(2);
     }
     else
     {
       setFan(0);
       printTime();
+      setLED(1);
     }
   }
 }
@@ -72,24 +82,36 @@ void setClockTime()
 }
 
 //set fan state
-//state == 1 -> fan ON
+//state == 1 -> fan ON1
 //state == 0 -> fan OFF
 void setFan(int state)
 {
   if(state == 1)
   {
-    //set pin 5 to HIGH to ENABLE fan
-    *PORT_E = (1 << 5) | *PORT_E;
-
-    //set pin 3 to HIGH to spin fan
-    *PORT_E = (1 << 3) | *PORT_E;
-    *PORT_E = ~(1 << 4) & *PORT_E;
+    //set PL1 to HIGH to ENABLE fan
+    *PORT_L = (1 << 1) | *PORT_L;
+  
+    //set PL2 to HIGH and PL0 to LOW to spin fan
+    *PORT_L = (1 << 2) | *PORT_L;
+    *PORT_L = ~(1 << 0) & *PORT_L;
     Serial.print("Fan was turned ON\n");
   }
   else if (state == 0)
   {
-    //set pin 5 to LOW ro DISABLE fan
-    *PORT_E = ~(1 << 5) & *PORT_E;
+    //set PL1 to LOW to DISABLE fan
+    *PORT_L = ~(1 << 1) & *PORT_L;
     Serial.print("Fan was turned OFF\n");
   }
+}
+
+//Turn on LED | 0 = Green, 1 = Yellow, 2 = Blue, 3 = Red
+void setLED(int color)
+{
+  //Clear LEDs
+  *PORT_A = ~(1 << 0) & *PORT_A;
+  *PORT_A = ~(1 << 1) & *PORT_A;
+  *PORT_A = ~(1 << 2) & *PORT_A;
+  *PORT_A = ~(1 << 3) & *PORT_A;
+  
+  *PORT_A = (1 << color) | *PORT_A;
 }
