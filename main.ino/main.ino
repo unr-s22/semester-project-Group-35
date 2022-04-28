@@ -3,7 +3,6 @@
 //Group 35: Rameen Feda, Peyton Thomas, Colin Martires
 //Date: 5/2/2022
 
-
 //libraries for RTC
 #include <Wire.h>
 #include "DS1307.h"
@@ -65,9 +64,7 @@ void loop()
   float t = dht.readTemperature();
   resval = adc_read(5); //Read data from analog pin and store it to resval variable
 
-
-
-  ERROR STATE - water level low
+  //ERROR STATE - water level low
   if (resval <= 10)
   {
     lcd.print("Error: ");
