@@ -1,13 +1,18 @@
-//CPE301 Semester Project
-//Swamp Cooler
-//Group 35: Rameen Feda, Peyton Thomas, Colin Martires
-//Date: 5/2/2022
+/*---------------------------------------------------
+CPE301 Semester Project
+Swamp Cooler
+Group 35: Rameen Feda, Peyton Thomas, Colin Martires
+Date: 5/2/2022
+---------------------------------------------------*/
 
-//libraries for RTC
+// TODO:
+// - create function to analyze parameters and return value
+//   corresponding to state of swamp cooler
+// - remember to add printTime!!!
+
+//libraries for RTC(Wire.h, DS1307.h), LCD(LiquidCrystal.h), Temp and Humidity Sensor(DHT.h)
 #include <Wire.h>
 #include "DS1307.h"
-
-//libraries to temp and humidity sensor
 #include <LiquidCrystal.h>
 #include "DHT.h"
 
@@ -35,6 +40,7 @@ int input;
 unsigned int resval = 0; 
 int respin = A5; 
 
+//create DHT and LiquidCrystal objects
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
@@ -46,9 +52,10 @@ void setup()
   //set pin PA0, PA1, PA2, and PA2 as OUTPUT for LEDs
   *DDR_A |= B00001111;
 
+  //initialize date and time on RTC
   setClockTime();
 
-  // set up the LCD's number of columns and rows:
+  //set up the LCD's number of columns and rows
   lcd.begin(16, 2);
   adc_init();
   delay(500);
@@ -59,10 +66,10 @@ void setup()
 
 void loop()
 {
+  //read humidity, temperature, and resevoir water level
   float h = dht.readHumidity();
-  // Read temperature as Celsius (the default)
   float t = dht.readTemperature();
-  resval = adc_read(5); //Read data from analog pin and store it to resval variable
+  resval = adc_read(5);
 
   //ERROR STATE - water level low
   if (resval <= 10)
@@ -118,6 +125,7 @@ void loop()
   // }
 }
 
+//print time and date from RTC
 void printTime()
 {
     clock.getTime();
@@ -135,7 +143,7 @@ void printTime()
     Serial.print("\n");
 }
 
-//set clock time
+//set clock time for RTC
 void setClockTime()
 {
   clock.begin();
@@ -168,7 +176,7 @@ void setFan(int state)
   }
 }
 
-//Turn on LED | 0 = Green, 1 = Yellow, 2 = Blue, 3 = Red
+//Turn on LED [0 = Green, 1 = Yellow, 2 = Blue, 3 = Red]
 void setLED(int color)
 {
   //Clear LEDs
@@ -201,14 +209,13 @@ unsigned int adc_read(unsigned char adc_channel)
 {
   *my_ADMUX &= 0b11100000;
   *my_ADCSRB &= 0b11110111;
-  if (adc_channel > 7){
+  if (adc_channel > 7)
+  {
     adc_channel -= 8;
     *my_ADCSRB |= 0b00001000;
-
   }
   *my_ADMUX += adc_channel;
   *my_ADCSRA |= 0x40;
   while((*my_ADCSRA & 0x40) != 0);
   return *ADC_DATA;
 }
-
