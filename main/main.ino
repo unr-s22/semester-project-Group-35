@@ -10,15 +10,18 @@ Date: 5/2/2022
 //   corresponding to state of swamp cooler
 // - remember to add printTime!!!
 
-//libraries for RTC(Wire.h, DS1307.h), LCD(LiquidCrystal.h), Temp and Humidity Sensor(DHT.h)
+//libraries for RTC(Wire.h, DS1307.h), LCD(LiquidCrystal.h), Temp and Humidity Sensor(DHT.h), and Stepper motor
 #include <Wire.h>
 #include "DS1307.h"
 #include <LiquidCrystal.h>
 #include "DHT.h"
+#include <Stepper.h>
 
 //define macros for DHT sensor
 #define DHTPIN 10     // Digital pin connected to the DHT sensor
 #define DHTTYPE DHT11   
+#define tempThresh 24.50 //temperature threshold
+#define STEPS 64
 
 //define PORT registers
 volatile unsigned char* DDR_A = (unsigned char*) 0x21;
@@ -38,11 +41,16 @@ volatile unsigned int* ADC_DATA = (unsigned int *) 0x78;
 DS1307 clock;
 int input;
 unsigned int resval = 0; 
-int respin = A5; 
+int respin = A5;
+int OldVal = 0;    //initialize oldval to be 0
+signed int Back = -256;   //move the motor -256 steps (-45 degrees)
+signed int Forward = 256;  //move the motor 256 steps (45 degrees)
+int angleLimit = 90;   //start in the "middle"
 
 //create DHT and LiquidCrystal objects
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal lcd(12, 11, 5, 4, 3, 13);
+Stepper stebber = Stepper(STEPS, 6, 8, 7, 9);
 
 void setup()
 {
@@ -61,18 +69,22 @@ void setup()
   delay(500);
   dht.begin();
 
+  stebber.setSpeed(256);
+  adc_init();
+  OldVal = adc_read(8);  //initialize OldVal to be the same as NewVal so that nothing occurs until a change happens
+
   Serial.begin(9600);
 }
 
 void loop()
 {
   //read humidity, temperature, and resevoir water level
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
   resval = adc_read(5);
 
-  //ERROR STATE - water level low
-  if (resval <= 10)
+  //States
+  if(resval <= 10)                      //ERROR STATE - no water
   {
     lcd.print("Error: ");
     lcd.setCursor(0, 1);
@@ -80,7 +92,7 @@ void loop()
     setFan(0);
     setLED(3);
   }
-  else if (resval > 10 && resval <= 320)
+  else if(resval > 10 && resval <= 320)  //ERROR STATE - low water
   {
     lcd.print("Error: ");
     lcd.setCursor(0, 1);
@@ -88,23 +100,63 @@ void loop()
     setFan(0);
     setLED(3);
   }
-  else if (resval > 320)
+  else if(resval > 320 && temperature > tempThresh)        //IDLE STATE - monitors temp and humidity
   {
     lcd.print("Humidity: ");
-    lcd.print(h);
+    lcd.print(humidity);
     lcd.print("% ");
     lcd.setCursor(0,1);
     lcd.print("Temp: ");
-    lcd.print(t);
+    lcd.print(temperature);
     lcd.print(" C   ");
-    setFan(1);
     setLED(0);
+    setFan(0);
   }
+  else if(resval > 320 && temperature <= tempThresh)      //RUNNITNG STATE - fan on if temp < tempThresh
+  {
+    lcd.print("Humidity: ");
+    lcd.print(humidity);
+    lcd.print("% ");
+    lcd.setCursor(0,1);
+    lcd.print("Temp: ");
+    lcd.print(temperature);
+    lcd.print(" C   ");
+    setLED(2);
+    setFan(1);
+  }
+
 
   delay(1000);
   lcd.clear();
 
+  int NewVal = adc_read(0);
+/*  Serial.print(NewVal);
+  Serial.print(" New");    //for testing
+  Serial.print("\n"); */
+  
+  if((NewVal > OldVal + 15) && (angleLimit < 136)){    //adding 15 allows for pot corrections
+    stebber.step(Back);  
+    angleLimit += 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
+    delay(500);
+/*    Serial.print("NEW >");
+    Serial.print("\n");      //for testing */
+  }
+  else if((NewVal + 15 < OldVal) && (angleLimit > 44)){   //adding 15 allows for pot corrections
+    stebber.step(Forward);
+    angleLimit -= 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
+    delay(500);
+/*    Serial.print("OLD > ");
+    Serial.print("\n");  //for testing */
+  }
+  else{
+    
+  }
+  OldVal = NewVal;
 
+//----------------------//
+/* Serial.print(OldVal);
+  Serial.print(" Old");
+  Serial.print("\n");  */
   // if(Serial.available())
   // {
   //   input = Serial.read();
@@ -123,6 +175,7 @@ void loop()
   //     setLED(1);
   //   }
   // }
+//-----------------------------//
 }
 
 //print time and date from RTC
