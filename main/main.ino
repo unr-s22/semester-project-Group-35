@@ -7,9 +7,7 @@ Date: 5/2/2022
 
 // TODO:
 // - integrate button with disabled state
-// - change delays to something else
-// - make sure all reading and writing is using Port registers
-//   - might need to change adc_read idk
+// - change delays
 
 //libraries for RTC(Wire.h, DS1307.h), LCD(LiquidCrystal.h), Temp and Humidity Sensor(DHT.h), and Stepper Motor(Stepper.h)
 #include <Wire.h>
@@ -22,9 +20,9 @@ Date: 5/2/2022
 #define DHTPIN 10         //Digital pin connected to the DHT sensor
 #define DHTTYPE DHT11   
 #define STEPS 64
-#define tempThresh 26  //temperature threshold
+#define tempThresh 26     //temperature threshold
 
-//---------------PORT registers----------------------//
+//---------------PORT registers---------------------------//
 //LEDs
 volatile unsigned char* DDR_A = (unsigned char*) 0x21;
 volatile unsigned char* PORT_A = (unsigned char*) 0x22;
@@ -40,7 +38,7 @@ volatile unsigned char* my_ADCSRA = (unsigned char *) 0x7A;
 volatile unsigned char* my_ADCSRB = (unsigned char *) 0x7B;
 volatile unsigned char* my_ADMUX = (unsigned char *) 0x7c;
 volatile unsigned int* ADC_DATA = (unsigned int *) 0x78;
-//-----------------------------------------------------//
+//--------------------------------------------------------//
 
 //define variables
 DS1307 clock;
@@ -51,7 +49,7 @@ int OldVal = 0;           //initialize oldval to be 0
 signed int Back = -256;   //move the motor -256 steps (-45 degrees)
 signed int Forward = 256; //move the motor 256 steps (45 degrees)
 int angleLimit = 90;      //start in the "middle"
-bool inErrorState;
+bool inErrorState;        //enables/disables stepper motor
 
 //create DHT, LiquidCrystal, and Stepper objects
 DHT dht(DHTPIN, DHTTYPE);
@@ -103,7 +101,7 @@ void loop()
     setFan(0);
     inErrorState = true;
   }
-  else if(resval > 320 && temperature <tempThresh)        //IDLE STATE - monitors temp and humidity
+  else if(resval > 320 && temperature < tempThresh)        //IDLE STATE - monitors temp and humidity
   {
     printTime("IDLE");   
     lcd.print("Humidity: ");
@@ -117,7 +115,7 @@ void loop()
     setFan(0);
     inErrorState = false;
   }
-  else if(resval > 320 && temperature >= tempThresh)      //RUNNITNG STATE - fan on if temp > tempThresh
+  else if(resval > 320 && temperature >= tempThresh)      //RUNNITNG STATE - fan on
   {
     printTime("RUNNING");
     lcd.print("Humidity: ");
@@ -146,7 +144,7 @@ void loop()
     // }
   }
 
-  if(inErrorState != true)      //disable stepper motor in ERROR state
+  if(!inErrorState)      //disable stepper motor in ERROR state
   {
     int NewVal = adc_read(8);
     /*  Serial.print(NewVal);
@@ -159,6 +157,7 @@ void loop()
       delay(500);
       /*    Serial.print("NEW >");
       Serial.print("\n");      //for testing */
+      printTime("Vent angle changed");
     }
     else if((NewVal + 15 < OldVal) && (angleLimit > 44)){   //adding 15 allows for pot corrections
       stebber.step(Forward);
@@ -166,6 +165,7 @@ void loop()
       delay(500);
       /*    Serial.print("OLD > ");
       Serial.print("\n");  //for testing */
+      printTime("Vent angle changed");
     }
     OldVal = NewVal;
     /* Serial.print(OldVal);
@@ -178,7 +178,7 @@ void loop()
 }
 
 //print time and date from RTC
-void printTime(String state)
+void printTime(String message)
 {
     clock.getTime();
     Serial.print(clock.hour, DEC);
@@ -193,7 +193,7 @@ void printTime(String state)
     Serial.print("/");
     Serial.print(clock.year + 2000, DEC);
     Serial.print("\n");
-    Serial.print(state);
+    Serial.print(message);
     Serial.print("\n");
 }
 
@@ -203,7 +203,6 @@ void setClockTime()
   clock.begin();
   clock.fillByYMD(2022, 4, 13);
   clock.fillByHMS(20, 34, 0);
-  clock.fillDayOfWeek(WED);
   clock.setTime();
 }
 
