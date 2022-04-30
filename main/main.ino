@@ -6,48 +6,54 @@ Date: 5/2/2022
 ---------------------------------------------------*/
 
 // TODO:
-// - create function to analyze parameters and return value
-//   corresponding to state of swamp cooler
-// - remember to add printTime!!!
+// - integrate button with disabled state
+// - change delays to something else
+// - make sure all reading and writing is using Port registers
+//   - might need to change adc_read idk
 
-//libraries for RTC(Wire.h, DS1307.h), LCD(LiquidCrystal.h), Temp and Humidity Sensor(DHT.h), and Stepper motor
+//libraries for RTC(Wire.h, DS1307.h), LCD(LiquidCrystal.h), Temp and Humidity Sensor(DHT.h), and Stepper Motor(Stepper.h)
 #include <Wire.h>
 #include "DS1307.h"
 #include <LiquidCrystal.h>
 #include "DHT.h"
 #include <Stepper.h>
 
-//define macros for DHT sensor
-#define DHTPIN 10     // Digital pin connected to the DHT sensor
+//define macros
+#define DHTPIN 10         //Digital pin connected to the DHT sensor
 #define DHTTYPE DHT11   
-#define tempThresh 24.50 //temperature threshold
 #define STEPS 64
+#define tempThresh 26  //temperature threshold
 
-//define PORT registers
+//---------------PORT registers----------------------//
+//LEDs
 volatile unsigned char* DDR_A = (unsigned char*) 0x21;
 volatile unsigned char* PORT_A = (unsigned char*) 0x22;
 volatile unsigned char* PIN_A = (unsigned char*) 0x20;
 
+//DC Motor (Fan)
 volatile unsigned char* DDR_L = (unsigned char*) 0x10A;
 volatile unsigned char* PORT_L = (unsigned char*) 0x10B;
 volatile unsigned char* PIN_L = (unsigned char*) 0x109;
 
+//ADC
 volatile unsigned char* my_ADCSRA = (unsigned char *) 0x7A;
 volatile unsigned char* my_ADCSRB = (unsigned char *) 0x7B;
 volatile unsigned char* my_ADMUX = (unsigned char *) 0x7c;
 volatile unsigned int* ADC_DATA = (unsigned int *) 0x78;
+//-----------------------------------------------------//
 
 //define variables
 DS1307 clock;
-int input;
+int input;                //store Serial.input (for testing)
 unsigned int resval = 0; 
 int respin = A5;
-int OldVal = 0;    //initialize oldval to be 0
+int OldVal = 0;           //initialize oldval to be 0
 signed int Back = -256;   //move the motor -256 steps (-45 degrees)
-signed int Forward = 256;  //move the motor 256 steps (45 degrees)
-int angleLimit = 90;   //start in the "middle"
+signed int Forward = 256; //move the motor 256 steps (45 degrees)
+int angleLimit = 90;      //start in the "middle"
+bool inErrorState;
 
-//create DHT and LiquidCrystal objects
+//create DHT, LiquidCrystal, and Stepper objects
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal lcd(12, 11, 5, 4, 3, 13);
 Stepper stebber = Stepper(STEPS, 6, 8, 7, 9);
@@ -83,25 +89,23 @@ void loop()
   float temperature = dht.readTemperature();
   resval = adc_read(5);
 
+  //input = Serial.read();
+  //Serial.println(input);
+
   //States
-  if(resval <= 10)                      //ERROR STATE - no water
+  if(resval <= 320)                                        //ERROR STATE - low water
   {
-    lcd.print("Error: ");
-    lcd.setCursor(0, 1);
-    lcd.print("No water ");
-    setFan(0);
-    setLED(3);
-  }
-  else if(resval > 10 && resval <= 320)  //ERROR STATE - low water
-  {
+    printTime("ERROR");    
     lcd.print("Error: ");
     lcd.setCursor(0, 1);
     lcd.print("Water level: Low ");
-    setFan(0);
     setLED(3);
+    setFan(0);
+    inErrorState = true;
   }
-  else if(resval > 320 && temperature > tempThresh)        //IDLE STATE - monitors temp and humidity
+  else if(resval > 320 && temperature <tempThresh)        //IDLE STATE - monitors temp and humidity
   {
+    printTime("IDLE");   
     lcd.print("Humidity: ");
     lcd.print(humidity);
     lcd.print("% ");
@@ -111,9 +115,11 @@ void loop()
     lcd.print(" C   ");
     setLED(0);
     setFan(0);
+    inErrorState = false;
   }
-  else if(resval > 320 && temperature <= tempThresh)      //RUNNITNG STATE - fan on if temp < tempThresh
+  else if(resval > 320 && temperature >= tempThresh)      //RUNNITNG STATE - fan on if temp > tempThresh
   {
+    printTime("RUNNING");
     lcd.print("Humidity: ");
     lcd.print(humidity);
     lcd.print("% ");
@@ -123,63 +129,56 @@ void loop()
     lcd.print(" C   ");
     setLED(2);
     setFan(1);
+    inErrorState = false;
+  }
+  else if(input == 51) //condition should be changed to button press    //DISABLED STATE
+  {
+    printTime("Disabled");
+    lcd.print("System");
+    lcd.setCursor(0,1);
+    lcd.print("Disabled");
+    setLED(1);
+    setFan(0);
+    inErrorState = false;
+    // while()
+    // {
+
+    // }
   }
 
+  if(inErrorState != true)      //disable stepper motor in ERROR state
+  {
+    int NewVal = adc_read(8);
+    /*  Serial.print(NewVal);
+    Serial.print(" New");    //for testing
+    Serial.print("\n"); */
+    
+    if((NewVal > OldVal + 15) && (angleLimit < 136)){    //adding 15 allows for pot corrections
+      stebber.step(Back);  
+      angleLimit += 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
+      delay(500);
+      /*    Serial.print("NEW >");
+      Serial.print("\n");      //for testing */
+    }
+    else if((NewVal + 15 < OldVal) && (angleLimit > 44)){   //adding 15 allows for pot corrections
+      stebber.step(Forward);
+      angleLimit -= 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
+      delay(500);
+      /*    Serial.print("OLD > ");
+      Serial.print("\n");  //for testing */
+    }
+    OldVal = NewVal;
+    /* Serial.print(OldVal);
+      Serial.print(" Old");
+      Serial.print("\n");  */
+  }
 
   delay(1000);
   lcd.clear();
-
-  int NewVal = adc_read(0);
-/*  Serial.print(NewVal);
-  Serial.print(" New");    //for testing
-  Serial.print("\n"); */
-  
-  if((NewVal > OldVal + 15) && (angleLimit < 136)){    //adding 15 allows for pot corrections
-    stebber.step(Back);  
-    angleLimit += 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
-    delay(500);
-/*    Serial.print("NEW >");
-    Serial.print("\n");      //for testing */
-  }
-  else if((NewVal + 15 < OldVal) && (angleLimit > 44)){   //adding 15 allows for pot corrections
-    stebber.step(Forward);
-    angleLimit -= 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
-    delay(500);
-/*    Serial.print("OLD > ");
-    Serial.print("\n");  //for testing */
-  }
-  else{
-    
-  }
-  OldVal = NewVal;
-
-//----------------------//
-/* Serial.print(OldVal);
-  Serial.print(" Old");
-  Serial.print("\n");  */
-  // if(Serial.available())
-  // {
-  //   input = Serial.read();
-  //   Serial.println(input);
-
-  //   if(input > 50)
-  //   {
-  //     setFan(1);
-  //     printTime();
-  //     setLED(2);
-  //   }
-  //   else
-  //   {
-  //     setFan(0);
-  //     printTime();
-  //     setLED(1);
-  //   }
-  // }
-//-----------------------------//
 }
 
 //print time and date from RTC
-void printTime()
+void printTime(String state)
 {
     clock.getTime();
     Serial.print(clock.hour, DEC);
@@ -193,6 +192,8 @@ void printTime()
     Serial.print(clock.dayOfMonth, DEC);
     Serial.print("/");
     Serial.print(clock.year + 2000, DEC);
+    Serial.print("\n");
+    Serial.print(state);
     Serial.print("\n");
 }
 
@@ -219,13 +220,11 @@ void setFan(int state)
     //set PL2 to HIGH and PL0 to LOW to spin fan
     *PORT_L = (1 << 2) | *PORT_L;
     *PORT_L = ~(1 << 0) & *PORT_L;
-    Serial.print("Fan was turned ON\n");
   }
   else if (state == 0)
   {
     //set PL1 to LOW to DISABLE fan
     *PORT_L = ~(1 << 1) & *PORT_L;
-    Serial.print("Fan was turned OFF\n");
   }
 }
 
