@@ -42,7 +42,7 @@ int respin = A5;
 
 //create DHT and LiquidCrystal objects
 DHT dht(DHTPIN, DHTTYPE);
-LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
+LiquidCrystal lcd(12, 11, 5, 4, 3, 1);
 
 void setup()
 {
