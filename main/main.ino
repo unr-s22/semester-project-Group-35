@@ -5,10 +5,6 @@ Group 35: Rameen Feda, Peyton Thomas, Colin Martires
 Date: 5/2/2022
 ---------------------------------------------------*/
 
-// TODO:
-// - integrate button with disabled state
-// - change delays
-
 //libraries for RTC(Wire.h, DS1307.h), LCD(LiquidCrystal.h), Temp and Humidity Sensor(DHT.h), and Stepper Motor(Stepper.h)
 #include <Wire.h>
 #include "DS1307.h"
@@ -108,7 +104,6 @@ void setup()
 
 void loop()
 {
-
   while(!previousStatus & currentStatus)
   {
     //read humidity, temperature, and resevoir water level
@@ -116,8 +111,6 @@ void loop()
     float temperature = dht.readTemperature();
     resval = adc_read(5);
 
-    //input = Serial.read();
-    //Serial.println(input);
     //States
     if(resval <= 320)                                        //ERROR STATE - low water
     {
@@ -167,39 +160,26 @@ void loop()
     if(!inErrorState)      //disable stepper motor in ERROR state
     {
       int NewVal = adc_read(8);
-      /*  Serial.print(NewVal);
-      Serial.print(" New");    //for testing
-      Serial.print("\n"); */
       
       if((NewVal > OldVal + 15) && (angleLimit < 136)){    //adding 15 allows for pot corrections
         stebber.step(Back);  
         angleLimit += 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
         delay(500);
-        /*    Serial.print("NEW >");
-        Serial.print("\n");      //for testing */
         printTime("Vent angle changed");
       }
       else if((NewVal + 15 < OldVal) && (angleLimit > 44)){   //adding 15 allows for pot corrections
         stebber.step(Forward);
         angleLimit -= 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
         delay(500);
-        /*    Serial.print("OLD > ");
-        Serial.print("\n");  //for testing */
         printTime("Vent angle changed");
       }
       OldVal = NewVal;
-      /* Serial.print(OldVal);
-        Serial.print(" Old");
-        Serial.print("\n");  */
-      //lcd.clear();
     }
     delay(1000);
   }
 
-  while(previousStatus & !currentStatus)
+  while(previousStatus & !currentStatus)                        //DISABLED STATE
   {
-    // else if(input == 51) //condition should be changed to button press    //DISABLED STATE
-    // {
     lcd.clear();
     lcd.setCursor(0,0);
     printTime("Disabled");
@@ -211,7 +191,6 @@ void loop()
     inErrorState = false;
     delay(1000);
   }
-
 
   delay(1000);
   //lcd.clear();
@@ -315,3 +294,5 @@ ISR (INT4_vect){
   previousStatus = !previousStatus;
   currentStatus = !currentStatus;
 }
+
+//add speaker to play Nickleback
