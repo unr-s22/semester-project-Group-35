@@ -17,7 +17,7 @@ Date: 5/2/2022
 #define DHTPIN 10         //Digital pin connected to the DHT sensor
 #define DHTTYPE DHT11   
 #define STEPS 64
-#define tempThresh 23     //temperature threshold
+#define tempThresh 26     //temperature threshold
 
 //---------------PORT registers---------------------------//
 //LEDs
@@ -41,7 +41,7 @@ volatile unsigned char* PORT_E = (unsigned char*) 0x28;
 volatile unsigned char* DDR_E = (unsigned char*) 0x27;
 volatile unsigned char* PIN_E = (unsigned char*) 0x26;
 
-//button
+//ISR
 volatile unsigned char* myEIMSK = (unsigned char*) 0x1D; 
 volatile unsigned char* myEIFR = (unsigned char*) 0x1C;  
 volatile unsigned char* mySREG = (unsigned char*) 0x3F; 
@@ -50,7 +50,6 @@ volatile unsigned char* myEICRB = (unsigned char*) 0x6A;
 
 //define variables
 DS1307 clock;
-int input;                //store Serial.input (for testing)
 unsigned int resval = 0; 
 int respin = A5;
 int OldVal = 0;           //initialize oldval to be 0
@@ -89,12 +88,10 @@ void setup()
 
   DDRE &= ~(1 << 4);
   PORTE |= (1 << 4);
-
   DDRE |= (1 << 1);
   
   EICRB |= (1 << ISC41);
   EICRB &= ~(1 << ISC40);
-
   EIMSK |= (1 << INT4);
 
   sei();
@@ -127,8 +124,7 @@ void loop()
     else if(resval > 320 && temperature < tempThresh)        //IDLE STATE - monitors temp and humidity
     {
       lcd.clear();
-      printTime("IDLE");
-      //lcd.setCursor(0,0);   
+      printTime("IDLE");  
       lcd.print("Humidity: ");
       lcd.print(humidity);
       lcd.print("% ");
@@ -140,7 +136,7 @@ void loop()
       setFan(0);
       inErrorState = false;
     }
-    else if(resval > 320 && temperature >= tempThresh)      //RUNNITNG STATE - fan on
+    else if(resval > 320 && temperature >= tempThresh)       //RUNNITNG STATE - fan on
     {
       lcd.clear();
       printTime("RUNNING");
@@ -157,28 +153,29 @@ void loop()
       inErrorState = false;
     }
 
-    if(!inErrorState)      //disable stepper motor in ERROR state
+    if(!inErrorState)                                        //disable stepper motor in ERROR state
     {
       int NewVal = adc_read(8);
       
-      if((NewVal > OldVal + 15) && (angleLimit < 136)){    //adding 15 allows for pot corrections
+      if((NewVal > OldVal + 15) && (angleLimit < 136)){      //adding 15 allows for pot corrections
         stebber.step(Back);  
-        angleLimit += 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
+        angleLimit += 45;                                    //increment the angleLimit so that the motor cannot turn past 0 or 180 degrees
         delay(500);
         printTime("Vent angle changed");
       }
-      else if((NewVal + 15 < OldVal) && (angleLimit > 44)){   //adding 15 allows for pot corrections
+      else if((NewVal + 15 < OldVal) && (angleLimit > 44)){  //adding 15 allows for pot corrections
         stebber.step(Forward);
-        angleLimit -= 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
+        angleLimit -= 45;                                    //increment the angleLimit so that the motor cannot turn past 0 or 180 degrees
         delay(500);
         printTime("Vent angle changed");
       }
       OldVal = NewVal;
     }
     delay(1000);
+    //delay(2000);
   }
 
-  while(previousStatus & !currentStatus)                        //DISABLED STATE
+  while(previousStatus & !currentStatus)                     //DISABLED STATE
   {
     lcd.clear();
     lcd.setCursor(0,0);
@@ -193,7 +190,6 @@ void loop()
   }
 
   delay(1000);
-  //lcd.clear();
 }
 
 //print time and date from RTC
@@ -220,7 +216,7 @@ void printTime(String message)
 void setClockTime()
 {
   clock.begin();
-  clock.fillByYMD(2022, 4, 13);
+  clock.fillByYMD(2022, 5, 2);
   clock.fillByHMS(20, 34, 0);
   clock.setTime();
 }
@@ -290,7 +286,8 @@ unsigned int adc_read(unsigned char adc_channel)
   return *ADC_DATA;
 }
 
-ISR (INT4_vect){
+ISR(INT4_vect)
+{
   previousStatus = !previousStatus;
   currentStatus = !currentStatus;
 }
