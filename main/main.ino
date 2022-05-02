@@ -172,7 +172,6 @@ void loop()
       OldVal = NewVal;
     }
     delay(1000);
-    //delay(2000);
   }
 
   while(previousStatus & !currentStatus)                     //DISABLED STATE
