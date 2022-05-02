@@ -15,12 +15,13 @@ Date: 5/2/2022
 #include <LiquidCrystal.h>
 #include "DHT.h"
 #include <Stepper.h>
+#include <stdbool.h>
 
 //define macros
 #define DHTPIN 10         //Digital pin connected to the DHT sensor
 #define DHTTYPE DHT11   
 #define STEPS 64
-#define tempThresh 26     //temperature threshold
+#define tempThresh 23     //temperature threshold
 
 //---------------PORT registers---------------------------//
 //LEDs
@@ -38,6 +39,17 @@ volatile unsigned char* my_ADCSRA = (unsigned char *) 0x7A;
 volatile unsigned char* my_ADCSRB = (unsigned char *) 0x7B;
 volatile unsigned char* my_ADMUX = (unsigned char *) 0x7c;
 volatile unsigned int* ADC_DATA = (unsigned int *) 0x78;
+
+//button
+volatile unsigned char* PORT_E = (unsigned char*) 0x28;
+volatile unsigned char* DDR_E = (unsigned char*) 0x27;
+volatile unsigned char* PIN_E = (unsigned char*) 0x26;
+
+//button
+volatile unsigned char* myEIMSK = (unsigned char*) 0x1D; 
+volatile unsigned char* myEIFR = (unsigned char*) 0x1C;  
+volatile unsigned char* mySREG = (unsigned char*) 0x3F; 
+volatile unsigned char* myEICRB = (unsigned char*) 0x6A;
 //--------------------------------------------------------//
 
 //define variables
@@ -50,6 +62,8 @@ signed int Back = -256;   //move the motor -256 steps (-45 degrees)
 signed int Forward = 256; //move the motor 256 steps (45 degrees)
 int angleLimit = 90;      //start in the "middle"
 bool inErrorState;        //enables/disables stepper motor
+volatile bool currentStatus = false;
+volatile bool previousStatus = true;
 
 //create DHT, LiquidCrystal, and Stepper objects
 DHT dht(DHTPIN, DHTTYPE);
@@ -77,60 +91,117 @@ void setup()
   adc_init();
   OldVal = adc_read(8);  //initialize OldVal to be the same as NewVal so that nothing occurs until a change happens
 
+  DDRE &= ~(1 << 4);
+  PORTE |= (1 << 4);
+
+  DDRE |= (1 << 1);
+  
+  EICRB |= (1 << ISC41);
+  EICRB &= ~(1 << ISC40);
+
+  EIMSK |= (1 << INT4);
+
+  sei();
+
   Serial.begin(9600);
 }
 
 void loop()
 {
-  //read humidity, temperature, and resevoir water level
-  float humidity = dht.readHumidity();
-  float temperature = dht.readTemperature();
-  resval = adc_read(5);
 
-  //input = Serial.read();
-  //Serial.println(input);
+  while(!previousStatus & currentStatus)
+  {
+    //read humidity, temperature, and resevoir water level
+    float humidity = dht.readHumidity();
+    float temperature = dht.readTemperature();
+    resval = adc_read(5);
 
-  //States
-  if(resval <= 320)                                        //ERROR STATE - low water
-  {
-    printTime("ERROR");    
-    lcd.print("Error: ");
-    lcd.setCursor(0, 1);
-    lcd.print("Water level: Low ");
-    setLED(3);
-    setFan(0);
-    inErrorState = true;
+    //input = Serial.read();
+    //Serial.println(input);
+    //States
+    if(resval <= 320)                                        //ERROR STATE - low water
+    {
+      lcd.clear();
+      printTime("ERROR");
+      lcd.setCursor(0,0);    
+      lcd.print("Error: ");
+      lcd.setCursor(0, 1);
+      lcd.print("Water level: Low ");
+      setLED(3);
+      setFan(0);
+      inErrorState = true;
+    }
+    else if(resval > 320 && temperature < tempThresh)        //IDLE STATE - monitors temp and humidity
+    {
+      lcd.clear();
+      printTime("IDLE");
+      //lcd.setCursor(0,0);   
+      lcd.print("Humidity: ");
+      lcd.print(humidity);
+      lcd.print("% ");
+      lcd.setCursor(0,1);
+      lcd.print("Temp: ");
+      lcd.print(temperature);
+      lcd.print(" C   ");
+      setLED(0);
+      setFan(0);
+      inErrorState = false;
+    }
+    else if(resval > 320 && temperature >= tempThresh)      //RUNNITNG STATE - fan on
+    {
+      lcd.clear();
+      printTime("RUNNING");
+      lcd.setCursor(0,0);
+      lcd.print("Humidity: ");
+      lcd.print(humidity);
+      lcd.print("% ");
+      lcd.setCursor(0,1);
+      lcd.print("Temp: ");
+      lcd.print(temperature);
+      lcd.print(" C   ");
+      setLED(2);
+      setFan(1);
+      inErrorState = false;
+    }
+
+    if(!inErrorState)      //disable stepper motor in ERROR state
+    {
+      int NewVal = adc_read(8);
+      /*  Serial.print(NewVal);
+      Serial.print(" New");    //for testing
+      Serial.print("\n"); */
+      
+      if((NewVal > OldVal + 15) && (angleLimit < 136)){    //adding 15 allows for pot corrections
+        stebber.step(Back);  
+        angleLimit += 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
+        delay(500);
+        /*    Serial.print("NEW >");
+        Serial.print("\n");      //for testing */
+        printTime("Vent angle changed");
+      }
+      else if((NewVal + 15 < OldVal) && (angleLimit > 44)){   //adding 15 allows for pot corrections
+        stebber.step(Forward);
+        angleLimit -= 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
+        delay(500);
+        /*    Serial.print("OLD > ");
+        Serial.print("\n");  //for testing */
+        printTime("Vent angle changed");
+      }
+      OldVal = NewVal;
+      /* Serial.print(OldVal);
+        Serial.print(" Old");
+        Serial.print("\n");  */
+      //lcd.clear();
+    }
+    delay(1000);
   }
-  else if(resval > 320 && temperature < tempThresh)        //IDLE STATE - monitors temp and humidity
+
+  while(previousStatus & !currentStatus)
   {
-    printTime("IDLE");   
-    lcd.print("Humidity: ");
-    lcd.print(humidity);
-    lcd.print("% ");
-    lcd.setCursor(0,1);
-    lcd.print("Temp: ");
-    lcd.print(temperature);
-    lcd.print(" C   ");
-    setLED(0);
-    setFan(0);
-    inErrorState = false;
-  }
-  else if(resval > 320 && temperature >= tempThresh)      //RUNNITNG STATE - fan on
-  {
-    printTime("RUNNING");
-    lcd.print("Humidity: ");
-    lcd.print(humidity);
-    lcd.print("% ");
-    lcd.setCursor(0,1);
-    lcd.print("Temp: ");
-    lcd.print(temperature);
-    lcd.print(" C   ");
-    setLED(2);
-    setFan(1);
-    inErrorState = false;
-  }
-  else if(input == 51) //condition should be changed to button press    //DISABLED STATE
-  {
+    // else if(input == 51) //condition should be changed to button press    //DISABLED STATE
+    // {
+    lcd.clear();
+    lcd.setCursor(0,0);
     printTime("Disabled");
     lcd.print("System");
     lcd.setCursor(0,1);
@@ -138,43 +209,12 @@ void loop()
     setLED(1);
     setFan(0);
     inErrorState = false;
-    // while()
-    // {
-
-    // }
+    delay(1000);
   }
 
-  if(!inErrorState)      //disable stepper motor in ERROR state
-  {
-    int NewVal = adc_read(8);
-    /*  Serial.print(NewVal);
-    Serial.print(" New");    //for testing
-    Serial.print("\n"); */
-    
-    if((NewVal > OldVal + 15) && (angleLimit < 136)){    //adding 15 allows for pot corrections
-      stebber.step(Back);  
-      angleLimit += 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
-      delay(500);
-      /*    Serial.print("NEW >");
-      Serial.print("\n");      //for testing */
-      printTime("Vent angle changed");
-    }
-    else if((NewVal + 15 < OldVal) && (angleLimit > 44)){   //adding 15 allows for pot corrections
-      stebber.step(Forward);
-      angleLimit -= 45;  //this will increment the angleLimit so that the motor cannot turn past 0 0r 180 degrees
-      delay(500);
-      /*    Serial.print("OLD > ");
-      Serial.print("\n");  //for testing */
-      printTime("Vent angle changed");
-    }
-    OldVal = NewVal;
-    /* Serial.print(OldVal);
-      Serial.print(" Old");
-      Serial.print("\n");  */
-  }
 
   delay(1000);
-  lcd.clear();
+  //lcd.clear();
 }
 
 //print time and date from RTC
@@ -269,4 +309,9 @@ unsigned int adc_read(unsigned char adc_channel)
   *my_ADCSRA |= 0x40;
   while((*my_ADCSRA & 0x40) != 0);
   return *ADC_DATA;
+}
+
+ISR (INT4_vect){
+  previousStatus = !previousStatus;
+  currentStatus = !currentStatus;
 }
